@@ -11,6 +11,7 @@ export type Report = {
   report_date: string | null
   tag_count: number
   summary: Record<string, string | number>
+  time_columns: string[]
   created_at: string
 }
 
@@ -22,6 +23,7 @@ export type TagReading = {
   unit: string
   value: number | null
   raw_value: string | null
+  values_by_time: Record<string, number | string>
   created_at: string
 }
 

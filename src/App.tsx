@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import {
   Upload,
   Search,
@@ -12,6 +12,7 @@ import {
   AlertCircle,
   History,
   ChevronRight,
+  Clock3,
 } from 'lucide-react'
 import { supabase, type Report, type TagReading } from './lib/supabase'
 import { parseJalkheriExcel, type ParsedTag, type ParsedReport } from './lib/excelParser'
@@ -19,6 +20,14 @@ import { parseJalkheriExcel, type ParsedTag, type ParsedReport } from './lib/exc
 type ActiveReport = {
   report: Report
   readings: TagReading[]
+}
+
+const KPI_TERMS: Record<string, string> = {
+  'TG Load (MW)': 'MW001',
+  'Main Steam Flow (TPH)': 'MAIN STM FLOW 1',
+  'Live Steam Pressure': 'LIVE STM PR',
+  'Main Steam Temperature': 'LIVE STM TEMP',
+  'Furnace Draft': 'FURNACE DRAFT',
 }
 
 export default function App() {
@@ -30,6 +39,7 @@ export default function App() {
   const [loadingHistory, setLoadingHistory] = useState(true)
   const [showHistory, setShowHistory] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [selectedTime, setSelectedTime] = useState<string>('')
 
   const loadHistory = useCallback(async () => {
     setLoadingHistory(true)
@@ -62,6 +72,7 @@ export default function App() {
           report_date: parsed.reportDate || null,
           tag_count: parsed.tagCount,
           summary: parsed.summary,
+          time_columns: parsed.timeColumns,
         })
         .select()
         .single()
@@ -77,6 +88,7 @@ export default function App() {
         unit: r.unit,
         value: r.value,
         raw_value: r.raw_value,
+        values_by_time: r.values_by_time,
       }))
 
       const { data: readingData, error: readingErr } = await supabase
@@ -88,6 +100,9 @@ export default function App() {
 
       setActive({ report, readings: readingData as TagReading[] })
       setSearch('')
+      setSelectedTime(
+        parsed.timeColumns.length > 0 ? parsed.timeColumns[parsed.timeColumns.length - 1] : ''
+      )
       await loadHistory()
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to process the Excel file')
@@ -109,6 +124,8 @@ export default function App() {
     }
     setActive({ report, readings: data as TagReading[] })
     setSearch('')
+    const times = report.time_columns || []
+    setSelectedTime(times.length > 0 ? times[times.length - 1] : '')
     setShowHistory(false)
   }
 
@@ -128,13 +145,48 @@ export default function App() {
     e.target.value = ''
   }
 
+  const timeColumns = active?.report.time_columns || []
+
+  // Recompute KPIs dynamically based on the selected time
+  const dynamicSummary = useMemo(() => {
+    if (!active || !selectedTime) return active ? active.report.summary : {}
+    const readings = active.readings
+    const result: Record<string, string | number> = {}
+    for (const [label, term] of Object.entries(KPI_TERMS)) {
+      const match = readings.find(
+        (r) =>
+          (r.tag + ' ' + r.description).toLowerCase().includes(term.toLowerCase()) &&
+          r.values_by_time &&
+          r.values_by_time[selectedTime] !== undefined &&
+          r.values_by_time[selectedTime] !== null
+      )
+      if (match) {
+        const v = match.values_by_time[selectedTime]
+        result[label] = typeof v === 'number' ? v : v
+      } else {
+        result[label] = '—'
+      }
+    }
+    return result
+  }, [active, selectedTime])
+
+  // Get value for a reading at the selected time
+  const getValueAtTime = (r: TagReading): string | number => {
+    if (!selectedTime || !r.values_by_time) {
+      return r.value !== null ? r.value : r.raw_value || '—'
+    }
+    const v = r.values_by_time[selectedTime]
+    if (v === undefined || v === null) return '—'
+    return v
+  }
+
   const filteredReadings = active
     ? active.readings.filter((r) =>
         (r.tag + ' ' + r.description).toLowerCase().includes(search.toLowerCase())
       )
     : []
 
-  const summaryEntries = active ? Object.entries(active.report.summary) : []
+  const summaryEntries = active ? Object.entries(dynamicSummary) : []
 
   return (
     <div className="app">
@@ -271,6 +323,29 @@ export default function App() {
               </div>
             </div>
 
+            {timeColumns.length > 0 && (
+              <div className="time-selector-bar">
+                <div className="time-selector-label">
+                  <Clock3 size={18} />
+                  <span>Select Time:</span>
+                </div>
+                <select
+                  className="time-select"
+                  value={selectedTime}
+                  onChange={(e) => setSelectedTime(e.target.value)}
+                >
+                  {timeColumns.map((t) => (
+                    <option key={t} value={t}>
+                      {t}
+                    </option>
+                  ))}
+                </select>
+                <span className="time-current">
+                  Showing data for: <strong>{selectedTime || '—'}</strong>
+                </span>
+              </div>
+            )}
+
             <div className="kpi-grid">
               {summaryEntries.map(([label, value]) => (
                 <div className="kpi-card" key={label}>
@@ -285,7 +360,7 @@ export default function App() {
 
             <div className="table-section">
               <div className="table-header">
-                <h2>Tag Data</h2>
+                <h2>Tag Data {selectedTime && <span className="time-badge">{selectedTime}</span>}</h2>
                 <div className="search-box">
                   <Search size={16} />
                   <input
@@ -303,7 +378,7 @@ export default function App() {
                       <th>Tag</th>
                       <th>Description</th>
                       <th>Unit</th>
-                      <th>Latest Value</th>
+                      <th>Value {selectedTime && `@ ${selectedTime}`}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -312,9 +387,7 @@ export default function App() {
                         <td className="tag-cell">{r.tag}</td>
                         <td>{r.description}</td>
                         <td className="unit-cell">{r.unit}</td>
-                        <td className="value-cell">
-                          {r.value !== null ? r.value : r.raw_value}
-                        </td>
+                        <td className="value-cell">{getValueAtTime(r)}</td>
                       </tr>
                     ))}
                     {filteredReadings.length === 0 && (

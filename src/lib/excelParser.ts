@@ -6,23 +6,32 @@ export type ParsedTag = {
   unit: string
   value: number | null
   raw_value: string
+  values_by_time: Record<string, number | string>
 }
 
 export type ParsedReport = {
   sheetName: string
   reportDate: string
   tagCount: number
+  timeColumns: string[]
   summary: Record<string, string | number>
   rows: ParsedTag[]
 }
 
-function findValue(rows: ParsedTag[], term: string): string | number {
+function findValueAtTime(
+  rows: ParsedTag[],
+  term: string,
+  timeLabel: string
+): string | number {
   const match = rows.find(
     (r) =>
       (r.tag + ' ' + r.description).toLowerCase().includes(term.toLowerCase()) &&
-      r.value !== null
+      r.values_by_time[timeLabel] !== undefined &&
+      r.values_by_time[timeLabel] !== null
   )
-  return match ? (match.value as number) : '—'
+  if (!match) return '—'
+  const v = match.values_by_time[timeLabel]
+  return typeof v === 'number' ? v : '—'
 }
 
 export async function parseJalkheriExcel(file: File): Promise<ParsedReport> {
@@ -33,29 +42,62 @@ export async function parseJalkheriExcel(file: File): Promise<ParsedReport> {
   const ws = wb.Sheets[sheetName]
   if (!ws) throw new Error('No readable sheet found in the Excel file.')
 
-  const rows: ParsedTag[] = []
+  const range = XLSX.utils.decode_range(ws['!ref'] || 'A1')
 
-  // Report date is at E5 (row 5, col 5)
-  const dateCell = ws['E5']
+  // Report date at E5 (0-indexed: row 4, col 4)
+  const dateCell = ws[XLSX.utils.encode_cell({ r: 4, c: 4 })]
   const reportDate = dateCell ? String(dateCell.v ?? '') : ''
 
-  // Find the last column with data (scan from col G onward, rows 8+)
-  // In xlsx, columns are 1-indexed; we'll use range
-  const range = XLSX.utils.decode_range(ws['!ref'] || 'A1')
-  let lastCol = range.e.c
+  // Detect time column headers: try row 7 (0-indexed 6) first, then row 8 (0-indexed 7)
+  let headerRow = 6
+  let hasTimeHeader = false
   for (let c = 6; c <= range.e.c; c++) {
-    let hasData = false
-    for (let r = 7; r <= range.e.r; r++) {
-      const cell = ws[XLSX.utils.encode_cell({ r, c })]
-      if (cell && cell.v !== null && cell.v !== undefined) {
-        hasData = true
-        break
+    const cell = ws[XLSX.utils.encode_cell({ r: 6, c })]
+    if (cell && cell.v !== null && cell.v !== undefined && String(cell.v).trim()) {
+      hasTimeHeader = true
+      break
+    }
+  }
+  if (!hasTimeHeader) headerRow = 7
+
+  const timeColumns: string[] = []
+  const timeColIndices: number[] = []
+
+  for (let c = 6; c <= range.e.c; c++) {
+    const cell = ws[XLSX.utils.encode_cell({ r: headerRow, c })]
+    if (cell && cell.v !== null && cell.v !== undefined) {
+      const label = String(cell.v).trim()
+      if (label) {
+        timeColumns.push(label)
+        timeColIndices.push(c)
       }
     }
-    if (hasData) lastCol = c
   }
 
-  // Tags start at row 8 (0-indexed row 7), tag in col C (idx 2), desc in col E (idx 4), unit in col F (idx 5)
+  // Fallback: if no header labels found, use column letters as labels
+  if (timeColIndices.length === 0) {
+    for (let c = 6; c <= range.e.c; c++) {
+      let hasData = false
+      for (let r = 7; r <= range.e.r; r++) {
+        const cell = ws[XLSX.utils.encode_cell({ r, c })]
+        if (cell && cell.v !== null && cell.v !== undefined) {
+          hasData = true
+          break
+        }
+      }
+      if (hasData) {
+        timeColumns.push(XLSX.utils.encode_col(c))
+        timeColIndices.push(c)
+      }
+    }
+  }
+
+  const lastColIdx =
+    timeColIndices.length > 0 ? timeColIndices[timeColIndices.length - 1] : range.e.c
+  const lastTimeLabel = timeColumns.length > 0 ? timeColumns[timeColumns.length - 1] : ''
+
+  // Tags start at row 8 (0-indexed 7): tag in col C (idx 2), desc in col E (idx 4), unit in col F (idx 5)
+  const rows: ParsedTag[] = []
   for (let r = 7; r <= range.e.r; r++) {
     const tagCell = ws[XLSX.utils.encode_cell({ r, c: 2 })]
     const tag = tagCell ? String(tagCell.v).trim() : ''
@@ -66,7 +108,23 @@ export async function parseJalkheriExcel(file: File): Promise<ParsedReport> {
     const desc = descCell ? String(descCell.v ?? '').trim() : ''
     const unit = unitCell ? String(unitCell.v ?? '').trim() : ''
 
-    const valCell = ws[XLSX.utils.encode_cell({ r, c: lastCol })]
+    // Extract value for every time column
+    const valuesByTime: Record<string, number | string> = {}
+    for (let i = 0; i < timeColIndices.length; i++) {
+      const colIdx = timeColIndices[i]
+      const label = timeColumns[i]
+      const valCell = ws[XLSX.utils.encode_cell({ r, c: colIdx })]
+      if (valCell && valCell.v !== null && valCell.v !== undefined) {
+        if (typeof valCell.v === 'number') {
+          valuesByTime[label] = valCell.v
+        } else {
+          valuesByTime[label] = String(valCell.v)
+        }
+      }
+    }
+
+    // Latest value (last time column) for backward compat
+    const valCell = ws[XLSX.utils.encode_cell({ r, c: lastColIdx })]
     const rawValue = valCell ? String(valCell.v ?? '') : ''
     const numVal = valCell && typeof valCell.v === 'number' ? valCell.v : null
 
@@ -76,21 +134,25 @@ export async function parseJalkheriExcel(file: File): Promise<ParsedReport> {
       unit,
       value: numVal,
       raw_value: rawValue,
+      values_by_time: valuesByTime,
     })
   }
 
+  // Summary computed from the latest time column by default
+  const summaryTime = lastTimeLabel || ''
   const summary = {
-    'TG Load (MW)': findValue(rows, 'MW001'),
-    'Main Steam Flow (TPH)': findValue(rows, 'MAIN STM FLOW 1'),
-    'Live Steam Pressure': findValue(rows, 'LIVE STM PR'),
-    'Main Steam Temperature': findValue(rows, 'LIVE STM TEMP'),
-    'Furnace Draft': findValue(rows, 'FURNACE DRAFT'),
+    'TG Load (MW)': findValueAtTime(rows, 'MW001', summaryTime),
+    'Main Steam Flow (TPH)': findValueAtTime(rows, 'MAIN STM FLOW 1', summaryTime),
+    'Live Steam Pressure': findValueAtTime(rows, 'LIVE STM PR', summaryTime),
+    'Main Steam Temperature': findValueAtTime(rows, 'LIVE STM TEMP', summaryTime),
+    'Furnace Draft': findValueAtTime(rows, 'FURNACE DRAFT', summaryTime),
   }
 
   return {
     sheetName,
     reportDate,
     tagCount: rows.length,
+    timeColumns,
     summary,
     rows,
   }
