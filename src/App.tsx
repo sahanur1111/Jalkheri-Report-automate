@@ -13,6 +13,7 @@ import {
   History,
   ChevronRight,
   Clock3,
+  ClipboardList,
 } from 'lucide-react'
 import { supabase, type Report, type TagReading } from './lib/supabase'
 import { parseJalkheriExcel, type ParsedTag, type ParsedReport } from './lib/excelParser'
@@ -21,6 +22,34 @@ type ActiveReport = {
   report: Report
   readings: TagReading[]
 }
+
+type PlantKpiRow = {
+  tag: string
+  plant: string
+  unit: string
+  fallback: number
+}
+
+const PLANT_KPI_ROWS: PlantKpiRow[] = [
+  { tag: 'MW001', plant: 'TG Load', unit: 'MW', fallback: 10.31 },
+  { tag: 'LBA10FF001_TON', plant: 'Boiler MS flow', unit: 'TNE/H', fallback: 43.8 },
+  { tag: 'LBA10CP001XQ01', plant: 'Boiler MS Pressure', unit: 'kg/cm²', fallback: 61.2 },
+  { tag: 'LBA10CT001XQ01', plant: 'Boiler MS Temperature', unit: '°C', fallback: 447 },
+  { tag: 'LAA10CT001XQ01', plant: 'Final feed water temperature', unit: '°C', fallback: 116 },
+  { tag: 'HAH30CT703CXQ01', plant: 'Steam temperature after SH3', unit: '°C', fallback: 435 },
+  { tag: 'LBA10CP011XQ01', plant: 'TG I/L Steam Pr.', unit: 'kg/cm²', fallback: 58.9 },
+  { tag: 'LBA10CT011XQ01', plant: 'TG I/L Steam Temp', unit: '°C', fallback: 445 },
+  { tag: 'PI109', plant: 'Wheel chamber Pressure', unit: 'kg/cm²', fallback: 36.1 },
+  { tag: 'LBA10FF001_TON', plant: 'Turbine SSC', unit: 'TNE/H', fallback: 4.2 },
+  { tag: 'PI522A', plant: 'Turbine vacuum-Avg', unit: 'kg/cm²', fallback: -0.88 },
+  { tag: 'HLA30CP001XQ01', plant: 'Combustion air pressure after APH', unit: 'MMWC', fallback: 395.5 },
+  { tag: 'HLA30CT001XQ01', plant: 'Combustion air temperature after APH', unit: '°C', fallback: 200 },
+  { tag: 'HNA10CO901', plant: 'Oxygen %', unit: '%', fallback: 8.4 },
+  { tag: 'HBK12CT001XQ01', plant: '3rd Pass Flue gas temperature', unit: '°C', fallback: 479 },
+  { tag: 'HBK15CT001XQ01', plant: 'SH 1.2 oultate Temp', unit: '°C', fallback: 356 },
+  { tag: 'HAH30CT748XQ01', plant: 'MTM SH3 (Max)', unit: '°C', fallback: 497 },
+  { tag: 'HAH40CT748XQ01', plant: 'MTM SH4 (Max)', unit: '°C', fallback: 482 },
+]
 
 const KPI_TERMS: Record<string, string> = {
   'TG Load (MW)': 'MW001',
@@ -57,6 +86,7 @@ export default function App() {
   const [showHistory, setShowHistory] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [selectedTime, setSelectedTime] = useState<string>('')
+  const [currentPage, setCurrentPage] = useState<'dashboard' | 'plant-kpi'>('dashboard')
 
   const loadHistory = useCallback(async () => {
     setLoadingHistory(true)
@@ -203,6 +233,13 @@ export default function App() {
 
   const summaryEntries = active ? Object.entries(dynamicSummary) : []
 
+  const plantKpiDate = active?.report.report_date || '24-09-2026'
+  const plantKpiRows = PLANT_KPI_ROWS.map((row) => {
+    const reading = active?.readings.find((item) => item.tag.toLowerCase() === row.tag.toLowerCase())
+    const selectedValue = reading ? getValueAtTime(reading) : row.fallback
+    return { ...row, value: selectedValue }
+  })
+
   return (
     <div className="app">
       <aside className={`sidebar ${sidebarOpen ? '' : 'closed'}`}>
@@ -274,7 +311,25 @@ export default function App() {
 
       <main className="main-content">
         <header className="topbar">
-          <h1>Report Automation Dashboard</h1>
+          <div className="topbar-title">
+            <h1>{currentPage === 'dashboard' ? 'Report Automation Dashboard' : 'Plant KPI Report'}</h1>
+            <div className="page-tabs">
+              <button
+                className={`page-tab ${currentPage === 'dashboard' ? 'active' : ''}`}
+                onClick={() => setCurrentPage('dashboard')}
+              >
+                <Gauge size={15} />
+                Dashboard
+              </button>
+              <button
+                className={`page-tab ${currentPage === 'plant-kpi' ? 'active' : ''}`}
+                onClick={() => setCurrentPage('plant-kpi')}
+              >
+                <ClipboardList size={15} />
+                Plant KPI
+              </button>
+            </div>
+          </div>
           <div className="upload-area">
             <label className="upload-btn">
               {uploading ? (
@@ -317,7 +372,7 @@ export default function App() {
           </div>
         )}
 
-        {active && (
+        {active && currentPage === 'dashboard' && (
           <div className="dashboard">
             <div className="report-info">
               <div className="report-info-item">
@@ -418,6 +473,47 @@ export default function App() {
               {filteredReadings.length > 300 && (
                 <div className="results-note">
                   Showing first 300 of {filteredReadings.length} matching tags.
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {currentPage === 'plant-kpi' && (
+          <div className="plant-kpi-page">
+            <div className="plant-kpi-sheet">
+              <div className="plant-kpi-title">Jalkheri Power Plant (SAEL) KPI-Report</div>
+              <div className="plant-kpi-meta">
+                <span>Plant performance indicators</span>
+                <span>Report date: <strong>{plantKpiDate}</strong></span>
+              </div>
+              <div className="plant-kpi-table-wrapper">
+                <table className="plant-kpi-table">
+                  <thead>
+                    <tr>
+                      <th>S.No</th>
+                      <th>TAG.No</th>
+                      <th>Plant</th>
+                      <th>UOM</th>
+                      <th>{selectedTime || plantKpiDate}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {plantKpiRows.map((row, index) => (
+                      <tr key={`${row.tag}-${row.plant}`}>
+                        <td>{index + 1}</td>
+                        <td className="plant-kpi-tag">{row.tag}</td>
+                        <td>{row.plant}</td>
+                        <td>{row.unit}</td>
+                        <td className="plant-kpi-value">{formatValue(row.value)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {!active && (
+                <div className="plant-kpi-note">
+                  Upload a report to replace the reference values with live report readings.
                 </div>
               )}
             </div>
