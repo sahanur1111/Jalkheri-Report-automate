@@ -743,6 +743,86 @@ tbody tr:hover {
   color: var(--primary-600);
 }
 
+.plant-kpi-date-area {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.date-display-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.date-edit-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  color: var(--neutral-400);
+  cursor: pointer;
+  padding: 2px;
+  border-radius: 4px;
+  transition: color 0.15s, background 0.15s;
+}
+
+.date-edit-icon:hover {
+  color: var(--primary-600);
+  background: var(--primary-50);
+}
+
+.date-edit-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.date-input {
+  font-size: 13px;
+  padding: 4px 8px;
+  border: 1px solid var(--primary-300);
+  border-radius: 6px;
+  outline: none;
+  width: 130px;
+  color: var(--neutral-800);
+}
+
+.date-input:focus {
+  border-color: var(--primary-500);
+  box-shadow: 0 0 0 3px var(--primary-50);
+}
+
+.date-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  padding: 4px;
+  transition: background 0.15s;
+}
+
+.date-btn.save {
+  background: var(--success-500, #22c55e);
+  color: #fff;
+}
+
+.date-btn.save:hover {
+  background: var(--success-600, #16a34a);
+}
+
+.date-btn.cancel {
+  background: var(--neutral-200);
+  color: var(--neutral-600);
+}
+
+.date-btn.cancel:hover {
+  background: var(--neutral-300);
+}
+
 .plant-kpi-table-wrapper {
   overflow-x: auto;
 }

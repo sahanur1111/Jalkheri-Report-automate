@@ -14,6 +14,9 @@ import {
   ChevronRight,
   Clock3,
   ClipboardList,
+  Pencil,
+  Check,
+  X,
 } from 'lucide-react'
 import { supabase, type Report, type TagReading } from './lib/supabase'
 import { parseJalkheriExcel, type ParsedTag, type ParsedReport } from './lib/excelParser'
@@ -28,6 +31,7 @@ type PlantKpiRow = {
   plant: string
   unit: string
   fallback: number
+  computed?: 'turbine_ssc'
 }
 
 const PLANT_KPI_ROWS: PlantKpiRow[] = [
@@ -40,7 +44,7 @@ const PLANT_KPI_ROWS: PlantKpiRow[] = [
   { tag: 'LBA10CP011XQ01', plant: 'TG I/L Steam Pr.', unit: 'kg/cm²', fallback: 58.9 },
   { tag: 'LBA10CT011XQ01', plant: 'TG I/L Steam Temp', unit: '°C', fallback: 445 },
   { tag: 'PI109', plant: 'Wheel chamber Pressure', unit: 'kg/cm²', fallback: 36.1 },
-  { tag: 'LBA10FF001_TON', plant: 'Turbine SSC', unit: 'TNE/H', fallback: 4.2 },
+  { tag: '', plant: 'Turbine SSC', unit: 'TNE/H', fallback: 4.25, computed: 'turbine_ssc' },
   { tag: 'PI522A', plant: 'Turbine vacuum-Avg', unit: 'kg/cm²', fallback: -0.88 },
   { tag: 'HLA30CP001XQ01', plant: 'Combustion air pressure after APH', unit: 'MMWC', fallback: 395.5 },
   { tag: 'HLA30CT001XQ01', plant: 'Combustion air temperature after APH', unit: '°C', fallback: 200 },
@@ -234,11 +238,49 @@ export default function App() {
   const summaryEntries = active ? Object.entries(dynamicSummary) : []
 
   const plantKpiDate = active?.report.report_date || '—'
+
+  const getNumericValue = (tag: string): number => {
+    const reading = active?.readings.find((item) => item.tag.toLowerCase() === tag.toLowerCase())
+    if (!reading) return 0
+    const v = getValueAtTime(reading)
+    const n = typeof v === 'number' ? v : parseFloat(String(v))
+    return isNaN(n) ? 0 : n
+  }
+
   const plantKpiRows = PLANT_KPI_ROWS.map((row) => {
+    if (row.computed === 'turbine_ssc') {
+      const msFlow = getNumericValue('LBA10FF001_TON')
+      const tgLoad = getNumericValue('MW001')
+      const ssc = tgLoad !== 0 ? msFlow / tgLoad : row.fallback
+      return { ...row, value: formatValue(ssc) }
+    }
     const reading = active?.readings.find((item) => item.tag.toLowerCase() === row.tag.toLowerCase())
     const selectedValue = reading ? getValueAtTime(reading) : row.fallback
     return { ...row, value: selectedValue }
   })
+
+  const [editingDate, setEditingDate] = useState(false)
+  const [dateInput, setDateInput] = useState('')
+
+  const startEditDate = () => {
+    setDateInput(active?.report.report_date || '')
+    setEditingDate(true)
+  }
+
+  const saveDate = async () => {
+    if (!active) return
+    const { error: err } = await supabase
+      .from('reports')
+      .update({ report_date: dateInput || null })
+      .eq('id', active.report.id)
+    if (err) {
+      setError(err.message)
+    } else {
+      setActive({ ...active, report: { ...active.report, report_date: dateInput || null } })
+      await loadHistory()
+    }
+    setEditingDate(false)
+  }
 
   return (
     <div className="app">
@@ -485,7 +527,36 @@ export default function App() {
               <div className="plant-kpi-title">Jalkheri Power Plant (SAEL) KPI-Report</div>
               <div className="plant-kpi-meta">
                 <span>Plant performance indicators</span>
-                <span>Report date: <strong>{plantKpiDate}</strong></span>
+                <div className="plant-kpi-date-area">
+                  <span>Report date:</span>
+                  {editingDate ? (
+                    <div className="date-edit-row">
+                      <input
+                        className="date-input"
+                        type="text"
+                        value={dateInput}
+                        onChange={(e) => setDateInput(e.target.value)}
+                        placeholder="DD-MM-YYYY"
+                        autoFocus
+                      />
+                      <button className="date-btn save" onClick={saveDate} title="Save date">
+                        <Check size={14} />
+                      </button>
+                      <button className="date-btn cancel" onClick={() => setEditingDate(false)} title="Cancel">
+                        <X size={14} />
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="date-display-row">
+                      <strong>{plantKpiDate}</strong>
+                      {active && (
+                        <button className="date-edit-icon" onClick={startEditDate} title="Change date">
+                          <Pencil size={13} />
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
               <div className="plant-kpi-table-wrapper">
                 <table className="plant-kpi-table">
