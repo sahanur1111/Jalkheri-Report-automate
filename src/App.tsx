@@ -233,7 +233,7 @@ export default function App() {
 
   const summaryEntries = active ? Object.entries(dynamicSummary) : []
 
-  const plantKpiDate = active?.report.report_date || '24-09-2026'
+  const plantKpiDate = active?.report.report_date || '—'
   const plantKpiRows = PLANT_KPI_ROWS.map((row) => {
     const reading = active?.readings.find((item) => item.tag.toLowerCase() === row.tag.toLowerCase())
     const selectedValue = reading ? getValueAtTime(reading) : row.fallback
@@ -492,7 +492,6 @@ export default function App() {
                   <thead>
                     <tr>
                       <th>S.No</th>
-                      <th>TAG.No</th>
                       <th>Plant</th>
                       <th>UOM</th>
                       <th>{selectedTime || plantKpiDate}</th>
@@ -502,7 +501,6 @@ export default function App() {
                     {plantKpiRows.map((row, index) => (
                       <tr key={`${row.tag}-${row.plant}`}>
                         <td>{index + 1}</td>
-                        <td className="plant-kpi-tag">{row.tag}</td>
                         <td>{row.plant}</td>
                         <td>{row.unit}</td>
                         <td className="plant-kpi-value">{formatValue(row.value)}</td>
