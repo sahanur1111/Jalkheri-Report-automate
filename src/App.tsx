@@ -30,6 +30,23 @@ const KPI_TERMS: Record<string, string> = {
   'Furnace Draft': 'FURNACE DRAFT',
 }
 
+function formatValue(v: string | number): string | number {
+  if (typeof v === 'number') {
+    return parseFloat(v.toFixed(2))
+  }
+  const n = parseFloat(v)
+  if (!isNaN(n)) {
+    return parseFloat(n.toFixed(2))
+  }
+  return v
+}
+
+function getDefaultTime(times: string[]): string {
+  if (times.length === 0) return ''
+  const avg = times.find((t) => t.toLowerCase().includes('avg') || t.toLowerCase().includes('average'))
+  return avg || times[times.length - 1]
+}
+
 export default function App() {
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -100,9 +117,7 @@ export default function App() {
 
       setActive({ report, readings: readingData as TagReading[] })
       setSearch('')
-      setSelectedTime(
-        parsed.timeColumns.length > 0 ? parsed.timeColumns[parsed.timeColumns.length - 1] : ''
-      )
+      setSelectedTime(getDefaultTime(parsed.timeColumns))
       await loadHistory()
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to process the Excel file')
@@ -125,7 +140,7 @@ export default function App() {
     setActive({ report, readings: data as TagReading[] })
     setSearch('')
     const times = report.time_columns || []
-    setSelectedTime(times.length > 0 ? times[times.length - 1] : '')
+    setSelectedTime(getDefaultTime(times))
     setShowHistory(false)
   }
 
@@ -162,7 +177,7 @@ export default function App() {
       )
       if (match) {
         const v = match.values_by_time[selectedTime]
-        result[label] = typeof v === 'number' ? v : v
+        result[label] = formatValue(v)
       } else {
         result[label] = '—'
       }
@@ -177,7 +192,7 @@ export default function App() {
     }
     const v = r.values_by_time[selectedTime]
     if (v === undefined || v === null) return '—'
-    return v
+    return formatValue(v)
   }
 
   const filteredReadings = active

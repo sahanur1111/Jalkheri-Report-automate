@@ -31,7 +31,15 @@ function findValueAtTime(
   )
   if (!match) return '—'
   const v = match.values_by_time[timeLabel]
-  return typeof v === 'number' ? v : '—'
+  if (typeof v === 'number') return parseFloat(v.toFixed(2))
+  const n = parseFloat(String(v))
+  return isNaN(n) ? '—' : parseFloat(n.toFixed(2))
+}
+
+function getDefaultTimeLabel(times: string[]): string {
+  if (times.length === 0) return ''
+  const avg = times.find((t) => t.toLowerCase().includes('avg') || t.toLowerCase().includes('average'))
+  return avg || times[times.length - 1]
 }
 
 export async function parseJalkheriExcel(file: File): Promise<ParsedReport> {
@@ -116,9 +124,10 @@ export async function parseJalkheriExcel(file: File): Promise<ParsedReport> {
       const valCell = ws[XLSX.utils.encode_cell({ r, c: colIdx })]
       if (valCell && valCell.v !== null && valCell.v !== undefined) {
         if (typeof valCell.v === 'number') {
-          valuesByTime[label] = valCell.v
+          valuesByTime[label] = parseFloat(valCell.v.toFixed(2))
         } else {
-          valuesByTime[label] = String(valCell.v)
+          const n = parseFloat(String(valCell.v))
+          valuesByTime[label] = isNaN(n) ? String(valCell.v) : parseFloat(n.toFixed(2))
         }
       }
     }
@@ -138,8 +147,8 @@ export async function parseJalkheriExcel(file: File): Promise<ParsedReport> {
     })
   }
 
-  // Summary computed from the latest time column by default
-  const summaryTime = lastTimeLabel || ''
+  // Summary computed from the Average column (or last column as fallback)
+  const summaryTime = getDefaultTimeLabel(timeColumns)
   const summary = {
     'TG Load (MW)': findValueAtTime(rows, 'MW001', summaryTime),
     'Main Steam Flow (TPH)': findValueAtTime(rows, 'MAIN STM FLOW 1', summaryTime),
