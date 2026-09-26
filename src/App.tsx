@@ -35,6 +35,7 @@ type PlantKpiRow = {
 }
 
 type EconomizerRow = {
+  tag: string
   parameter: string
   unit: string
   fallback: number
@@ -64,15 +65,15 @@ const PLANT_KPI_ROWS: PlantKpiRow[] = [
 ]
 
 const ECONOMIZER_ROWS: EconomizerRow[] = [
-  { parameter: 'TG- Load', unit: 'MW', fallback: 10.31, terms: ['MW001'] },
-  { parameter: 'Feed Water temp ECO O/L', unit: '°C', fallback: 228, terms: ['ECO O/L', 'ECONOMIZER O/L'] },
-  { parameter: 'Boiler Drum steam O/L temp', unit: '°C', fallback: 283, terms: ['DRUM STM TEMP', 'DRUM STEAM'] },
-  { parameter: 'Feed Water temp at ECO I/L', unit: '°C', fallback: 140, terms: ['ECO I/L', 'ECONOMIZER I/L'] },
-  { parameter: 'Feedwater Delta T', unit: '°C', fallback: 88, computed: 'feed_delta' },
-  { parameter: 'Flue Gas inlet Temp. to ECO & HP FGC 4,5', unit: '°C', fallback: 347, terms: ['FLUE GAS INLET', 'FGC 4,5 INLET'] },
-  { parameter: 'Flue Gas Outlet Temp. to ECO & HP FGC 4,5', unit: '°C', fallback: 182, terms: ['FLUE GAS OUTLET', 'FGC 4,5 OUTLET'] },
-  { parameter: 'Flue Gas Delta T', unit: '°C', fallback: 165, computed: 'flue_delta' },
-  { parameter: 'Calculated Effectiveness', unit: '%', fallback: 42.71, computed: 'effectiveness' },
+  { tag: 'MW001', parameter: 'TG- Load', unit: 'MW', fallback: 10.31, terms: ['MW001'] },
+  { tag: 'LAA10CT001XQ01', parameter: 'Feed Water temp ECO O/L', unit: '°C', fallback: 228, terms: ['ECO O/L', 'ECONOMIZER O/L'] },
+  { tag: 'LBA10CT001XQ01', parameter: 'Boiler Drum steam O/L temp', unit: '°C', fallback: 283, terms: ['DRUM STM TEMP', 'DRUM STEAM'] },
+  { tag: 'LAA10CT001XQ01', parameter: 'Feed Water temp at ECO I/L', unit: '°C', fallback: 140, terms: ['ECO I/L', 'ECONOMIZER I/L'] },
+  { tag: '', parameter: 'Feedwater Delta T', unit: '°C', fallback: 88, computed: 'feed_delta' },
+  { tag: 'HBK12CT001XQ01', parameter: 'Flue Gas inlet Temp. to ECO & HP FGC 4,5', unit: '°C', fallback: 347, terms: ['FLUE GAS INLET', 'FGC 4,5 INLET'] },
+  { tag: 'HBK15CT001XQ01', parameter: 'Flue Gas Outlet Temp. to ECO & HP FGC 4,5', unit: '°C', fallback: 182, terms: ['FLUE GAS OUTLET', 'FGC 4,5 OUTLET'] },
+  { tag: '', parameter: 'Flue Gas Delta T', unit: '°C', fallback: 165, computed: 'flue_delta' },
+  { tag: '', parameter: 'Calculated Effectiveness', unit: '%', fallback: 42.71, computed: 'effectiveness' },
 ]
 
 const KPI_TERMS: Record<string, string> = {
@@ -285,11 +286,11 @@ export default function App() {
       const msFlow = getNumericValue('LBA10FF001_TON')
       const tgLoad = getNumericValue('MW001')
       const ssc = tgLoad !== 0 ? msFlow / tgLoad : row.fallback
-      return { ...row, value: formatValue(ssc) }
+      return { ...row, value: formatValue(ssc), resolvedTag: '' }
     }
     const reading = active?.readings.find((item) => item.tag.toLowerCase() === row.tag.toLowerCase())
     const selectedValue = reading ? getValueAtTime(reading) : row.fallback
-    return { ...row, value: selectedValue }
+    return { ...row, value: selectedValue, resolvedTag: reading?.tag || row.tag }
   })
 
   const economizerBaseValues = {
@@ -302,23 +303,24 @@ export default function App() {
 
   const economizerRows = ECONOMIZER_ROWS.map((row) => {
     if (row.computed === 'feed_delta') {
-      return { ...row, value: economizerBaseValues.feedWaterOutlet - economizerBaseValues.feedWaterInlet }
+      return { ...row, value: economizerBaseValues.feedWaterOutlet - economizerBaseValues.feedWaterInlet, resolvedTag: '' }
     }
     if (row.computed === 'flue_delta') {
-      return { ...row, value: economizerBaseValues.flueGasInlet - economizerBaseValues.flueGasOutlet }
+      return { ...row, value: economizerBaseValues.flueGasInlet - economizerBaseValues.flueGasOutlet, resolvedTag: '' }
     }
     if (row.computed === 'effectiveness') {
       const denominator = economizerBaseValues.drumSteamOutlet - economizerBaseValues.feedWaterInlet
       const effectiveness = denominator !== 0
         ? ((economizerBaseValues.feedWaterOutlet - economizerBaseValues.feedWaterInlet) / denominator) * 100
         : row.fallback
-      return { ...row, value: effectiveness }
+      return { ...row, value: effectiveness, resolvedTag: '' }
     }
     const fallback = row.parameter === 'TG- Load'
       ? PLANT_KPI_ROWS[0].fallback
       : row.fallback
     const value = row.terms ? getNumericReadingValue(row.terms, fallback) : fallback
-    return { ...row, value }
+    const matched = row.terms ? findReadingByTerms(row.terms) : undefined
+    return { ...row, value, resolvedTag: matched?.tag || row.tag }
   })
 
   const [editingDate, setEditingDate] = useState(false)
@@ -632,6 +634,7 @@ export default function App() {
                   <thead>
                     <tr>
                       <th>S.No</th>
+                      <th>Tag No.</th>
                       <th>Plant</th>
                       <th>UOM</th>
                       <th>{selectedTime || plantKpiDate}</th>
@@ -641,6 +644,7 @@ export default function App() {
                     {plantKpiRows.map((row, index) => (
                       <tr key={`${row.tag}-${row.plant}`}>
                         <td>{index + 1}</td>
+                        <td className="plant-kpi-tag">{row.resolvedTag || '—'}</td>
                         <td>{row.plant}</td>
                         <td>{row.unit}</td>
                         <td className="plant-kpi-value">{formatValue(row.value)}</td>
@@ -671,6 +675,7 @@ export default function App() {
                   <thead>
                     <tr>
                       <th>S.No</th>
+                      <th>Tag No.</th>
                       <th>Parameter</th>
                       <th>UOM</th>
                       <th>{selectedTime || plantKpiDate}</th>
@@ -683,6 +688,7 @@ export default function App() {
                         className={`${row.computed ? 'economizer-computed-row' : ''} ${row.computed === 'effectiveness' ? 'economizer-final-row' : ''}`}
                       >
                         <td>{index + 1}</td>
+                        <td className="plant-kpi-tag">{row.resolvedTag || '—'}</td>
                         <td className="economizer-param">{row.parameter}</td>
                         <td>{row.unit}</td>
                         <td className={`plant-kpi-value ${row.computed ? 'economizer-value' : ''}`}>{formatValue(row.value)}</td>
