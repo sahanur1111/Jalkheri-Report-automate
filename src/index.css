@@ -902,6 +902,31 @@ tbody tr:hover {
   color: var(--primary-700) !important;
 }
 
+.economizer-computed-row .economizer-value {
+  color: #c62828 !important;
+}
+
+.economizer-final-row {
+  background: #edf1df !important;
+}
+
+.economizer-final-row td {
+  color: var(--neutral-900) !important;
+  font-weight: 700;
+}
+
+.economizer-final-row .economizer-value {
+  color: #b3261e !important;
+}
+
+.economizer-remarks {
+  padding: 8px 6px 10px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--neutral-900);
+  border-top: 1px solid var(--neutral-300);
+}
+
 .economizer-param {
   text-align: left !important;
   padding-left: 18px !important;

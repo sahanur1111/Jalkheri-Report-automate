@@ -661,7 +661,7 @@ export default function App() {
         {currentPage === 'economizer' && (
           <div className="plant-kpi-page">
             <div className="plant-kpi-sheet">
-              <div className="plant-kpi-title">Effectiveness of Economizer &amp; HP FGC 4,5</div>
+              <div className="plant-kpi-title">Effectiveness of Economizer</div>
               <div className="plant-kpi-meta">
                 <span>Jalkheri Power Plant (SAEL)</span>
                 <span>Report date: <strong>{plantKpiDate}</strong></span>
@@ -680,16 +680,19 @@ export default function App() {
                     {economizerRows.map((row, index) => (
                       <tr
                         key={row.parameter}
-                        className={row.computed ? 'economizer-computed-row' : ''}
+                        className={`${row.computed ? 'economizer-computed-row' : ''} ${row.computed === 'effectiveness' ? 'economizer-final-row' : ''}`}
                       >
                         <td>{index + 1}</td>
                         <td className="economizer-param">{row.parameter}</td>
                         <td>{row.unit}</td>
-                        <td className="plant-kpi-value">{formatValue(row.value)}</td>
+                        <td className={`plant-kpi-value ${row.computed ? 'economizer-value' : ''}`}>{formatValue(row.value)}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
+              </div>
+              <div className="economizer-remarks">
+                Remarks- ( &lt; 25 Means is Very Poor of ECO Effectiveness )
               </div>
               {!active && (
                 <div className="plant-kpi-note">
