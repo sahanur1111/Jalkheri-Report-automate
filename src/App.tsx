@@ -34,6 +34,14 @@ type PlantKpiRow = {
   computed?: 'turbine_ssc'
 }
 
+type EconomizerRow = {
+  parameter: string
+  unit: string
+  fallback: number
+  terms?: string[]
+  computed?: 'feed_delta' | 'flue_delta' | 'effectiveness'
+}
+
 const PLANT_KPI_ROWS: PlantKpiRow[] = [
   { tag: 'MW001', plant: 'TG Load', unit: 'MW', fallback: 10.31 },
   { tag: 'LBA10FF001_TON', plant: 'Boiler MS flow', unit: 'TNE/H', fallback: 43.8 },
@@ -53,6 +61,18 @@ const PLANT_KPI_ROWS: PlantKpiRow[] = [
   { tag: 'HBK15CT001XQ01', plant: 'SH 1.2 oultate Temp', unit: '°C', fallback: 356 },
   { tag: 'HAH30CT748XQ01', plant: 'MTM SH3 (Max)', unit: '°C', fallback: 497 },
   { tag: 'HAH40CT748XQ01', plant: 'MTM SH4 (Max)', unit: '°C', fallback: 482 },
+]
+
+const ECONOMIZER_ROWS: EconomizerRow[] = [
+  { parameter: 'TG- Load', unit: 'MW', fallback: 10.31, terms: ['MW001'] },
+  { parameter: 'Feed Water temp ECO O/L', unit: '°C', fallback: 228, terms: ['ECO O/L', 'ECONOMIZER O/L'] },
+  { parameter: 'Boiler Drum steam O/L temp', unit: '°C', fallback: 283, terms: ['DRUM STM TEMP', 'DRUM STEAM'] },
+  { parameter: 'Feed Water temp at ECO I/L', unit: '°C', fallback: 140, terms: ['ECO I/L', 'ECONOMIZER I/L'] },
+  { parameter: 'Feedwater Delta T', unit: '°C', fallback: 88, computed: 'feed_delta' },
+  { parameter: 'Flue Gas inlet Temp. to ECO & HP FGC 4,5', unit: '°C', fallback: 347, terms: ['FLUE GAS INLET', 'FGC 4,5 INLET'] },
+  { parameter: 'Flue Gas Outlet Temp. to ECO & HP FGC 4,5', unit: '°C', fallback: 182, terms: ['FLUE GAS OUTLET', 'FGC 4,5 OUTLET'] },
+  { parameter: 'Flue Gas Delta T', unit: '°C', fallback: 165, computed: 'flue_delta' },
+  { parameter: 'Calculated Effectiveness', unit: '%', fallback: 42.71, computed: 'effectiveness' },
 ]
 
 const KPI_TERMS: Record<string, string> = {
@@ -90,7 +110,7 @@ export default function App() {
   const [showHistory, setShowHistory] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [selectedTime, setSelectedTime] = useState<string>('')
-  const [currentPage, setCurrentPage] = useState<'dashboard' | 'plant-kpi'>('dashboard')
+  const [currentPage, setCurrentPage] = useState<'dashboard' | 'plant-kpi' | 'economizer'>('dashboard')
 
   const loadHistory = useCallback(async () => {
     setLoadingHistory(true)
@@ -239,6 +259,19 @@ export default function App() {
 
   const plantKpiDate = active?.report.report_date || '—'
 
+  const findReadingByTerms = (terms: string[]): TagReading | undefined =>
+    active?.readings.find((item) =>
+      terms.some((term) => `${item.tag} ${item.description}`.toLowerCase().includes(term.toLowerCase()))
+    )
+
+  const getNumericReadingValue = (terms: string[], fallback: number): number => {
+    const reading = findReadingByTerms(terms)
+    if (!reading) return fallback
+    const value = getValueAtTime(reading)
+    const numericValue = typeof value === 'number' ? value : parseFloat(String(value))
+    return isNaN(numericValue) ? fallback : numericValue
+  }
+
   const getNumericValue = (tag: string): number => {
     const reading = active?.readings.find((item) => item.tag.toLowerCase() === tag.toLowerCase())
     if (!reading) return 0
@@ -257,6 +290,35 @@ export default function App() {
     const reading = active?.readings.find((item) => item.tag.toLowerCase() === row.tag.toLowerCase())
     const selectedValue = reading ? getValueAtTime(reading) : row.fallback
     return { ...row, value: selectedValue }
+  })
+
+  const economizerBaseValues = {
+    feedWaterOutlet: getNumericReadingValue(ECONOMIZER_ROWS[1].terms || [], ECONOMIZER_ROWS[1].fallback),
+    drumSteamOutlet: getNumericReadingValue(ECONOMIZER_ROWS[2].terms || [], ECONOMIZER_ROWS[2].fallback),
+    feedWaterInlet: getNumericReadingValue(ECONOMIZER_ROWS[3].terms || [], ECONOMIZER_ROWS[3].fallback),
+    flueGasInlet: getNumericReadingValue(ECONOMIZER_ROWS[5].terms || [], ECONOMIZER_ROWS[5].fallback),
+    flueGasOutlet: getNumericReadingValue(ECONOMIZER_ROWS[6].terms || [], ECONOMIZER_ROWS[6].fallback),
+  }
+
+  const economizerRows = ECONOMIZER_ROWS.map((row) => {
+    if (row.computed === 'feed_delta') {
+      return { ...row, value: economizerBaseValues.feedWaterOutlet - economizerBaseValues.feedWaterInlet }
+    }
+    if (row.computed === 'flue_delta') {
+      return { ...row, value: economizerBaseValues.flueGasInlet - economizerBaseValues.flueGasOutlet }
+    }
+    if (row.computed === 'effectiveness') {
+      const denominator = economizerBaseValues.drumSteamOutlet - economizerBaseValues.feedWaterInlet
+      const effectiveness = denominator !== 0
+        ? ((economizerBaseValues.feedWaterOutlet - economizerBaseValues.feedWaterInlet) / denominator) * 100
+        : row.fallback
+      return { ...row, value: effectiveness }
+    }
+    const fallback = row.parameter === 'TG- Load'
+      ? PLANT_KPI_ROWS[0].fallback
+      : row.fallback
+    const value = row.terms ? getNumericReadingValue(row.terms, fallback) : fallback
+    return { ...row, value }
   })
 
   const [editingDate, setEditingDate] = useState(false)
@@ -354,7 +416,7 @@ export default function App() {
       <main className="main-content">
         <header className="topbar">
           <div className="topbar-title">
-            <h1>{currentPage === 'dashboard' ? 'Report Automation Dashboard' : 'Plant KPI Report'}</h1>
+            <h1>{currentPage === 'dashboard' ? 'Report Automation Dashboard' : currentPage === 'plant-kpi' ? 'Plant KPI Report' : 'Economizer Effectiveness Report'}</h1>
             <div className="page-tabs">
               <button
                 className={`page-tab ${currentPage === 'dashboard' ? 'active' : ''}`}
@@ -369,6 +431,13 @@ export default function App() {
               >
                 <ClipboardList size={15} />
                 Plant KPI
+              </button>
+              <button
+                className={`page-tab ${currentPage === 'economizer' ? 'active' : ''}`}
+                onClick={() => setCurrentPage('economizer')}
+              >
+                <ClipboardList size={15} />
+                Economizer
               </button>
             </div>
           </div>
@@ -573,6 +642,48 @@ export default function App() {
                       <tr key={`${row.tag}-${row.plant}`}>
                         <td>{index + 1}</td>
                         <td>{row.plant}</td>
+                        <td>{row.unit}</td>
+                        <td className="plant-kpi-value">{formatValue(row.value)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {!active && (
+                <div className="plant-kpi-note">
+                  Upload a report to replace the reference values with live report readings.
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {currentPage === 'economizer' && (
+          <div className="plant-kpi-page">
+            <div className="plant-kpi-sheet">
+              <div className="plant-kpi-title">Effectiveness of Economizer &amp; HP FGC 4,5</div>
+              <div className="plant-kpi-meta">
+                <span>Jalkheri Power Plant (SAEL)</span>
+                <span>Report date: <strong>{plantKpiDate}</strong></span>
+              </div>
+              <div className="plant-kpi-table-wrapper">
+                <table className="plant-kpi-table">
+                  <thead>
+                    <tr>
+                      <th>S.No</th>
+                      <th>Parameter</th>
+                      <th>UOM</th>
+                      <th>{selectedTime || plantKpiDate}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {economizerRows.map((row, index) => (
+                      <tr
+                        key={row.parameter}
+                        className={row.computed ? 'economizer-computed-row' : ''}
+                      >
+                        <td>{index + 1}</td>
+                        <td className="economizer-param">{row.parameter}</td>
                         <td>{row.unit}</td>
                         <td className="plant-kpi-value">{formatValue(row.value)}</td>
                       </tr>

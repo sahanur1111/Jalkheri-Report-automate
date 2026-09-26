@@ -893,6 +893,20 @@ tbody tr:hover {
   color: var(--neutral-400);
 }
 
+.economizer-computed-row {
+  background: var(--primary-50) !important;
+  font-weight: 600;
+}
+
+.economizer-computed-row td {
+  color: var(--primary-700) !important;
+}
+
+.economizer-param {
+  text-align: left !important;
+  padding-left: 18px !important;
+}
+
 /* ===== Responsive ===== */
 @media (max-width: 768px) {
   .sidebar {
