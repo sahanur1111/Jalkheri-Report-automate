@@ -17,9 +17,11 @@ import {
   Pencil,
   Check,
   X,
+  Sparkles,
 } from 'lucide-react'
 import { supabase, type Report, type TagReading } from './lib/supabase'
 import { parseJalkheriExcel, type ParsedTag, type ParsedReport } from './lib/excelParser'
+import AiAgent from './components/AiAgent'
 
 type ActiveReport = {
   report: Report
@@ -111,7 +113,7 @@ export default function App() {
   const [showHistory, setShowHistory] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [selectedTime, setSelectedTime] = useState<string>('')
-  const [currentPage, setCurrentPage] = useState<'dashboard' | 'plant-kpi' | 'economizer'>('dashboard')
+  const [currentPage, setCurrentPage] = useState<'dashboard' | 'plant-kpi' | 'economizer' | 'ai-agent'>('dashboard')
 
   const loadHistory = useCallback(async () => {
     setLoadingHistory(true)
@@ -426,7 +428,7 @@ export default function App() {
       <main className="main-content">
         <header className="topbar">
           <div className="topbar-title">
-            <h1>{currentPage === 'dashboard' ? 'Report Automation Dashboard' : currentPage === 'plant-kpi' ? 'Plant KPI Report' : 'Economizer Effectiveness Report'}</h1>
+            <h1>{currentPage === 'dashboard' ? 'Report Automation Dashboard' : currentPage === 'plant-kpi' ? 'Plant KPI Report' : currentPage === 'economizer' ? 'Economizer Effectiveness Report' : 'DCS AI Assistant'}</h1>
             <div className="page-tabs">
               <button
                 className={`page-tab ${currentPage === 'dashboard' ? 'active' : ''}`}
@@ -448,6 +450,13 @@ export default function App() {
               >
                 <ClipboardList size={15} />
                 Economizer
+              </button>
+              <button
+                className={`page-tab ${currentPage === 'ai-agent' ? 'active' : ''}`}
+                onClick={() => setCurrentPage('ai-agent')}
+              >
+                <Sparkles size={15} />
+                AI Agent
               </button>
             </div>
           </div>
@@ -715,6 +724,13 @@ export default function App() {
               )}
             </div>
           </div>
+        )}
+        {currentPage === 'ai-agent' && (
+          <AiAgent
+            report={active?.report || null}
+            readings={active?.readings || []}
+            selectedTime={selectedTime}
+          />
         )}
       </main>
     </div>
