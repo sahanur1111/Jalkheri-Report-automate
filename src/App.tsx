@@ -57,7 +57,7 @@ const PLANT_KPI_ROWS: PlantKpiRow[] = [
   { tag: 'PI522A', plant: 'Turbine vacuum-Avg', unit: 'kg/cm²', fallback: -0.88 },
   { tag: 'HLA30CP001XQ01', plant: 'Combustion air pressure after APH', unit: 'MMWC', fallback: 395.5 },
   { tag: 'HLA30CT001XQ01', plant: 'Combustion air temperature after APH', unit: '°C', fallback: 200 },
-  { tag: 'HNA10CO901', plant: 'Oxygen %', unit: '%', fallback: 8.4 },
+  { tag: 'HNA10CQ901', plant: 'Oxygen %', unit: '%', fallback: 8.4 },
   { tag: 'HBK12CT001XQ01', plant: '3rd Pass Flue gas temperature', unit: '°C', fallback: 479 },
   { tag: 'HBK15CT001XQ01', plant: 'SH 1.2 oultate Temp', unit: '°C', fallback: 356 },
   { tag: 'HAH30CT748XQ01', plant: 'MTM SH3 (Max)', unit: '°C', fallback: 497 },
@@ -65,13 +65,13 @@ const PLANT_KPI_ROWS: PlantKpiRow[] = [
 ]
 
 const ECONOMIZER_ROWS: EconomizerRow[] = [
-  { tag: 'MW001', parameter: 'TG- Load', unit: 'MW', fallback: 10.31, terms: ['MW001'] },
-  { tag: 'LAA10CT001XQ01', parameter: 'Feed Water temp ECO O/L', unit: '°C', fallback: 228, terms: ['ECO O/L', 'ECONOMIZER O/L'] },
-  { tag: 'LBA10CT001XQ01', parameter: 'Boiler Drum steam O/L temp', unit: '°C', fallback: 283, terms: ['DRUM STM TEMP', 'DRUM STEAM'] },
-  { tag: 'LAA10CT001XQ01', parameter: 'Feed Water temp at ECO I/L', unit: '°C', fallback: 140, terms: ['ECO I/L', 'ECONOMIZER I/L'] },
+  { tag: 'MW001', parameter: 'TG- Load', unit: 'MW', fallback: 10.31, terms: ['MW001', 'ACTIVE POWER'] },
+  { tag: 'HAC30CT001XQ01', parameter: 'Feed Water temp ECO O/L', unit: '°C', fallback: 228, terms: ['ECO OUTLET TEMP', 'HAC30CT001XQ01'] },
+  { tag: 'HAD10CP001XQ01', parameter: 'Boiler Drum steam O/L temp', unit: '°C', fallback: 283, terms: ['BOILER DRUM PRESSURE', 'HAD10CP001XQ01'] },
+  { tag: 'LAA10CT001XQ01', parameter: 'Feed Water temp at ECO I/L', unit: '°C', fallback: 140, terms: ['TEMP FEEDWATER BOTTOM', 'LAA10CT001XQ01'] },
   { tag: '', parameter: 'Feedwater Delta T', unit: '°C', fallback: 88, computed: 'feed_delta' },
-  { tag: 'HBK12CT001XQ01', parameter: 'Flue Gas inlet Temp. to ECO & HP FGC 4,5', unit: '°C', fallback: 347, terms: ['FLUE GAS INLET', 'FGC 4,5 INLET'] },
-  { tag: 'HBK15CT001XQ01', parameter: 'Flue Gas Outlet Temp. to ECO & HP FGC 4,5', unit: '°C', fallback: 182, terms: ['FLUE GAS OUTLET', 'FGC 4,5 OUTLET'] },
+  { tag: 'HNA10CT001XQ01', parameter: 'Flue Gas inlet Temp. to ECO & HP FGC 4,5', unit: '°C', fallback: 347, terms: ['FLUE GAS TEMP I/L ECO', 'HNA10CT001XQ01'] },
+  { tag: 'HNA20CT001XQ01', parameter: 'Flue Gas Outlet Temp. to ECO & HP FGC 4,5', unit: '°C', fallback: 182, terms: ['TEMP TRANS O/L FGC', 'HNA20CT001XQ01'] },
   { tag: '', parameter: 'Flue Gas Delta T', unit: '°C', fallback: 165, computed: 'flue_delta' },
   { tag: '', parameter: 'Calculated Effectiveness', unit: '%', fallback: 42.71, computed: 'effectiveness' },
 ]
@@ -261,9 +261,14 @@ export default function App() {
   const plantKpiDate = active?.report.report_date || '—'
 
   const findReadingByTerms = (terms: string[]): TagReading | undefined =>
-    active?.readings.find((item) =>
-      terms.some((term) => `${item.tag} ${item.description}`.toLowerCase().includes(term.toLowerCase()))
-    )
+    active?.readings.find((item) => {
+      const tagLower = item.tag.toLowerCase()
+      const descLower = item.description.toLowerCase()
+      return terms.some((term) => {
+        const termLower = term.toLowerCase()
+        return tagLower === termLower || tagLower.includes(termLower) || descLower.includes(termLower)
+      })
+    })
 
   const getNumericReadingValue = (terms: string[], fallback: number): number => {
     const reading = findReadingByTerms(terms)
@@ -288,7 +293,10 @@ export default function App() {
       const ssc = tgLoad !== 0 ? msFlow / tgLoad : row.fallback
       return { ...row, value: formatValue(ssc), resolvedTag: '' }
     }
-    const reading = active?.readings.find((item) => item.tag.toLowerCase() === row.tag.toLowerCase())
+    const reading = active?.readings.find((item) => {
+      const tagLower = item.tag.toLowerCase()
+      return tagLower === row.tag.toLowerCase() || tagLower.includes(row.tag.toLowerCase())
+    })
     const selectedValue = reading ? getValueAtTime(reading) : row.fallback
     return { ...row, value: selectedValue, resolvedTag: reading?.tag || row.tag }
   })
@@ -309,7 +317,7 @@ export default function App() {
       return { ...row, value: economizerBaseValues.flueGasInlet - economizerBaseValues.flueGasOutlet, resolvedTag: '' }
     }
     if (row.computed === 'effectiveness') {
-      const denominator = economizerBaseValues.drumSteamOutlet - economizerBaseValues.feedWaterInlet
+      const denominator = economizerBaseValues.flueGasInlet - economizerBaseValues.feedWaterInlet
       const effectiveness = denominator !== 0
         ? ((economizerBaseValues.feedWaterOutlet - economizerBaseValues.feedWaterInlet) / denominator) * 100
         : row.fallback
